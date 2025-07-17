@@ -10,7 +10,6 @@ async function createApiKey(role: "user" | "admin", key?: string) {
   await redis.set(redisKey, JSON.stringify(authData));
 
   console.log(`Created API key with role '${role}': ${apiKey}`);
-  console.log(apiKey);
   return apiKey;
 }
 
