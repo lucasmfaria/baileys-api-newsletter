@@ -18,6 +18,7 @@ import { downloadMediaFromMessages } from "@/baileys/helpers/downloadMediaFromMe
 import { LRUCacheWrapper } from "@/baileys/helpers/lruCacheWrapper";
 import { normalizeBrazilPhoneNumber } from "@/baileys/helpers/normalizeBrazilPhoneNumber";
 import { preprocessAudio } from "@/baileys/helpers/preprocessAudio";
+import { shouldIgnoreJid } from "@/baileys/helpers/shouldIgnoreJid";
 import { useRedisAuthState } from "@/baileys/redisAuthState";
 import type {
   BaileysConnectionOptions,
@@ -107,6 +108,7 @@ export class BaileysConnection {
       logger: baileysLogger,
       browser: Browsers.windows(this.clientName),
       syncFullHistory: this.syncFullHistory,
+      shouldIgnoreJid,
     });
 
     this.socket.ev.on("creds.update", saveCreds);
