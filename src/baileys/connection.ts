@@ -66,6 +66,7 @@ export class BaileysConnection {
   private socket: ReturnType<typeof makeWASocket> | null;
   private clearAuthState: AuthenticationState["keys"]["clear"] | null;
   private clearOnlinePresenceTimeout: NodeJS.Timer | null = null;
+  private reconnectCount = 0;
 
   constructor(phoneNumber: string, options: BaileysConnectionOptions) {
     this.phoneNumber = phoneNumber;
@@ -195,6 +196,7 @@ export class BaileysConnection {
     await this.clearAuthState?.();
     this.clearAuthState = null;
     this.socket = null;
+    this.reconnectCount = 0;
     this.onConnectionClose?.();
   }
 
@@ -364,7 +366,7 @@ export class BaileysConnection {
           this.phoneNumber,
           lastDisconnect,
         );
-        this.handleReconnecting();
+        await this.handleReconnecting();
         // NOTE: We don't call `this.close()` here because we want to keep the auth state.
         this.socket = null;
         this.connect();
@@ -393,6 +395,10 @@ export class BaileysConnection {
 
     if (isOnline) {
       Object.assign(data, { connection: "open" });
+    }
+
+    if (data.connection === "open") {
+      this.reconnectCount = 0;
     }
 
     this.sendToWebhook({
@@ -461,7 +467,16 @@ export class BaileysConnection {
     this.logout();
   }
 
-  private handleReconnecting() {
+  private async handleReconnecting() {
+    this.reconnectCount += 1;
+    if (this.reconnectCount > 10) {
+      logger.warn(
+        "[%s] [handleReconnecting] Reconnect count exceeded 10, resetting connection",
+        this.phoneNumber,
+      );
+      await this.close();
+      return;
+    }
     this.sendToWebhook({
       event: "connection.update",
       data: { connection: "reconnecting" as WAConnectionState },
