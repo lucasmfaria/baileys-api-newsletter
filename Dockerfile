@@ -12,6 +12,12 @@ COPY --from=install /temp/prod/node_modules node_modules
 COPY . .
 
 FROM base AS release
+
+# NOTE: The Sharp image processing library can leak memory when used in containers due to issues with glibc's malloc.
+# Using jemalloc as the memory allocator (via LD_PRELOAD) mitigates these leaks and improves stability.
+RUN apk add --no-cache jemalloc
+ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
+
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/src/ src
 COPY --from=prerelease /usr/src/app/tsconfig.json tsconfig.json
