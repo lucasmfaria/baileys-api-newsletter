@@ -251,6 +251,68 @@ const connectionsController = new Elysia({
       },
     },
   )
+  .post(
+    "/:phoneNumber/on-whatsapp",
+    async ({ params, body }) => {
+      const { phoneNumber } = params;
+      const { jids } = body;
+
+      return baileys.onWhatsApp(phoneNumber, jids);
+    },
+    {
+      params: phoneNumberParams,
+      body: t.Object({
+        jids: t.Array(
+          t.String({
+            description: "Phone number formatted as jid",
+            pattern: "^\\d{5,15}@s.whatsapp.net$",
+            example: "551234567890@s.whatsapp.net",
+          }),
+          {
+            description:
+              "Array of phone numbers to check if they are on WhatsApp",
+            minItems: 1,
+            maxItems: 50,
+          },
+        ),
+      }),
+      detail: {
+        description: "Check if phone numbers are registered on WhatsApp",
+        responses: {
+          200: {
+            description: "Phone numbers checked successfully",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          jid: {
+                            type: "string",
+                            description: "WhatsApp JID of the phone number",
+                            example: "551234567890@s.whatsapp.net",
+                          },
+                          exists: {
+                            type: "boolean",
+                            description:
+                              "Whether the phone number is registered on WhatsApp",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  )
   .delete(
     "/:phoneNumber",
     async ({ params }) => {
