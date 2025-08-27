@@ -15,7 +15,6 @@ import type {
   SendReceiptsOptions,
 } from "@/baileys/types";
 import logger from "@/lib/logger";
-import { ConnectionTracker } from "@/monitoring";
 
 export class BaileysConnectionsHandler {
   private connections: Record<string, BaileysConnection> = {};
@@ -32,7 +31,8 @@ export class BaileysConnectionsHandler {
     }
 
     logger.info(
-      "Reconnecting from auth store %o",
+      "Reconnecting %d connections from auth store %o",
+      savedConnections.length,
       savedConnections.map(({ id }) => id),
     );
 
@@ -40,22 +40,23 @@ export class BaileysConnectionsHandler {
     for (const { id, metadata } of savedConnections) {
       const connection = new BaileysConnection(id, {
         onConnectionClose: () => {
-          ConnectionTracker.getInstance().removeConnection(id);
           delete this.connections[id];
+          logger.debug(
+            "Now tracking %d connections",
+            Object.keys(this.connections).length,
+          );
         },
         isReconnect: true,
         ...metadata,
       });
       this.connections[id] = connection;
       await connection.connect();
-      ConnectionTracker.getInstance().trackConnection(id);
     }
   }
 
   async connect(phoneNumber: string, options: BaileysConnectionOptions) {
     if (this.connections[phoneNumber]) {
       // NOTE: This triggers a `connection.update` event.
-      ConnectionTracker.getInstance().updateActivity(phoneNumber);
       await this.connections[phoneNumber].sendPresenceUpdate("available");
       return;
     }
@@ -63,14 +64,16 @@ export class BaileysConnectionsHandler {
     const connection = new BaileysConnection(phoneNumber, {
       ...options,
       onConnectionClose: () => {
-        ConnectionTracker.getInstance().removeConnection(phoneNumber);
         delete this.connections[phoneNumber];
         options.onConnectionClose?.();
       },
     });
     await connection.connect();
     this.connections[phoneNumber] = connection;
-    ConnectionTracker.getInstance().trackConnection(phoneNumber);
+    logger.debug(
+      "Now tracking %d connections",
+      Object.keys(this.connections).length,
+    );
   }
 
   private getConnection(phoneNumber: string) {
@@ -78,7 +81,6 @@ export class BaileysConnectionsHandler {
     if (!connection) {
       throw new BaileysNotConnectedError();
     }
-    ConnectionTracker.getInstance().updateActivity(phoneNumber);
     return connection;
   }
 
@@ -140,6 +142,10 @@ export class BaileysConnectionsHandler {
   async logout(phoneNumber: string) {
     await this.getConnection(phoneNumber).logout();
     delete this.connections[phoneNumber];
+    logger.debug(
+      "Now tracking %d connections",
+      Object.keys(this.connections).length,
+    );
   }
 
   async logoutAll() {
