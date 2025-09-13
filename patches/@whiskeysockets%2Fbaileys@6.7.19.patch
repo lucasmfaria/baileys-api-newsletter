@@ -1,0 +1,109 @@
+diff --git a/lib/Socket/Client/websocket.js b/lib/Socket/Client/websocket.js
+index 975b9f96124a8518bb75ff27989a85b08daa2f96..4b2f4a15ef9c97b7af847d390b7e0f17f1342b0f 100644
+--- a/lib/Socket/Client/websocket.js
++++ b/lib/Socket/Client/websocket.js
+@@ -30,7 +30,7 @@ export class WebSocketClient extends AbstractSocketClient {
+             agent: this.config.agent
+         });
+         this.socket.setMaxListeners(0);
+-        const events = ['close', 'error', 'upgrade', 'message', 'open', 'ping', 'pong', 'unexpected-response'];
++        const events = ['close', 'error', 'message', 'open', 'ping', 'pong'];
+         for (const event of events) {
+             this.socket?.on(event, (...args) => this.emit(event, ...args));
+         }
+diff --git a/lib/Socket/socket.js b/lib/Socket/socket.js
+index c81974592cffcb203a3e6470589a6ac99d4baed0..82fa681ec6b7e0865ed157bad1746db803817805 100644
+--- a/lib/Socket/socket.js
++++ b/lib/Socket/socket.js
+@@ -76,6 +76,9 @@ export const makeSocket = (config) => {
+     };
+     /** log & process any unexpected errors */
+     const onUnexpectedError = (err, msg) => {
++        if (!ws.isOpen) {
++            return;
++        }
+         logger.error({ err }, `unexpected error in '${msg}'`);
+     };
+     /** await the next incoming message */
+diff --git a/lib/Types/Message.d.ts b/lib/Types/Message.d.ts
+index defff8e4d22e537cb3a5a919b0725455ba18ff28..6ce239f87734b0321a8ce0e4152445774400a307 100644
+--- a/lib/Types/Message.d.ts
++++ b/lib/Types/Message.d.ts
+@@ -117,7 +117,7 @@ export type AnyMediaMessageContent = (({
+     isAnimated?: boolean;
+ } & WithDimensions) | ({
+     document: WAMediaUpload;
+-    mimetype: string;
++    mimetype?: string;
+     fileName?: string;
+     caption?: string;
+ } & Contextable)) & {
+@@ -221,6 +221,7 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
+     font?: number;
+     /** if it is broadcast */
+     broadcast?: boolean;
++    waveformProxy?: Buffer | null;
+ };
+ export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
+     userJid: string;
+diff --git a/lib/Utils/auth-utils.js b/lib/Utils/auth-utils.js
+index a98f43afb48bd9ed30f2e5808b02113d0b76ae17..d83571a15bba5fe4349bb745803e050fa1d115c8 100644
+--- a/lib/Utils/auth-utils.js
++++ b/lib/Utils/auth-utils.js
+@@ -115,6 +115,16 @@ export const addTransactionCapability = (state, logger, { maxCommitRetries, dela
+                 return state.set(data);
+             }
+         },
++        clear: () => {
++            if (isInTransaction()) {
++                logger.trace('clearing cache in transaction');
++                transactionCache = {};
++                mutations = {};
++            }
++            else {
++                return state.clear();
++            }
++        },
+         isInTransaction,
+         async transaction(work) {
+             let result;
+diff --git a/lib/Utils/decode-wa-message.js b/lib/Utils/decode-wa-message.js
+index 56594afe404f4ce98b5f0f619ef73989a0e30b3f..f2a11e01baa0b2d941a0258b41b46e8421d569d2 100644
+--- a/lib/Utils/decode-wa-message.js
++++ b/lib/Utils/decode-wa-message.js
+@@ -24,6 +24,7 @@ export const NACK_REASONS = {
+  * @note this will only parse the message, not decrypt it
+  */
+ export function decodeMessageNode(stanza, meId, meLid) {
++    var _a, _b, _c, _d, _e;
+     let msgType;
+     let chatId;
+     let author;
+diff --git a/lib/Utils/messages-media.js b/lib/Utils/messages-media.js
+index 29650c7baf4f3f240b801f2abbe0309420febf74..bb66446f22a601b3bf750d8e67d051900aabd6b5 100644
+--- a/lib/Utils/messages-media.js
++++ b/lib/Utils/messages-media.js
+@@ -386,8 +386,8 @@ const toSmallestChunkSize = (num) => {
+ };
+ export const getUrlFromDirectPath = (directPath) => `https://${DEF_HOST}${directPath}`;
+ export const downloadContentFromMessage = async ({ mediaKey, directPath, url }, type, opts = {}) => {
+-    const isValidMediaUrl = url?.startsWith('https://mmg.whatsapp.net/');
+-    const downloadUrl = isValidMediaUrl ? url : getUrlFromDirectPath(directPath);
++    const isValidMediaUrl = url === null || url === void 0 ? void 0 : url.startsWith('https://mmg.whatsapp.net/');
++    const downloadUrl = isValidMediaUrl ? url : (0, exports.getUrlFromDirectPath)(directPath);
+     if (!downloadUrl) {
+         throw new Boom('No valid media URL or directPath present in message', { statusCode: 400 });
+     }
+diff --git a/lib/Utils/messages.js b/lib/Utils/messages.js
+index c6cc439d5c84a9542f885be1f50217520c60e5eb..9aa9f3c9cfec636fa9cf0d944f4bce96009239d9 100644
+--- a/lib/Utils/messages.js
++++ b/lib/Utils/messages.js
+@@ -166,7 +166,7 @@ export const prepareWAMessageMedia = async (message, options) => {
+                     logger?.debug('computed audio duration');
+                 }
+                 if (requiresWaveformProcessing) {
+-                    uploadData.waveform = await getAudioWaveform(originalFilePath, logger);
++                    uploadData.waveform = await (0, getAudioWaveform)(options.waveformProxy || originalFilePath, logger);
+                     logger?.debug('processed waveform');
+                 }
+                 if (requiresAudioBackground) {
